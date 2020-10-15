@@ -18,6 +18,10 @@ class Turtle():
 
         self.iniTime = rospy.get_time()
         self.rate    = rospy.Rate(10)
+        self.theta   = 0.00
+        self.iniTheta =0.00
+        self.firstCounter = 0
+
         self.axisMovement = Twist()
         self.axisMovement.linear.x = 1.0
         self.axisMovement.linear.y = 0.0
@@ -26,11 +30,17 @@ class Turtle():
         self.axisMovement.angular.x = 0.0
         self.axisMovement.angular.y = 0.0
         self.axisMovement.angular.z = 1.0
-        self.theta = 0.00
+
         
     #################### Callback function for Subscribing topic #############################
     def getPose(self,data):
         self.theta = data.theta
+
+    ########################## Storing Initial values ######################################
+    def iniVal_theta(self):
+        if(self.firstCounter==0):
+            self.iniTheta = self.theta
+            self.firstCounter = self.firstCounter+1
 
     #################### Publishing Stopping values #########################################
     def stopValue(self):
@@ -58,11 +68,15 @@ class Turtle():
 if __name__ == '__main__':
     try:
        rotate_tur = Turtle()
-
+    
        while not rospy.is_shutdown():
         rotate_tur.rate.sleep()
+        rotate_tur.iniVal_theta()    
+        print (rotate_tur.iniTheta)
+
+
         rotate_tur.rotation()
-        if(rotate_tur.theta<0.0 and rotate_tur.theta>-0.15):
+        if(rotate_tur.theta<rotate_tur.iniTheta and rotate_tur.theta>(rotate_tur.iniTheta-0.096)):
             rotate_tur.stopValue()
             rospy.signal_shutdown("Goal Reached")
 
