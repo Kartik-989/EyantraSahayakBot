@@ -72,9 +72,6 @@ if __name__ == '__main__':
        while not rospy.is_shutdown():
         rotate_tur.rate.sleep()
         rotate_tur.iniVal_theta()    
-        print (rotate_tur.iniTheta)
-
-
         rotate_tur.rotation()
         if(rotate_tur.theta<rotate_tur.iniTheta and rotate_tur.theta>(rotate_tur.iniTheta-0.096)):
             rotate_tur.stopValue()
