@@ -1,68 +1,81 @@
 #!/usr/bin/env python
 
-
 import rospy
-
 from geometry_msgs.msg import Twist
 from turtlesim.msg import Pose
 
-class turtle():
+class Turtle():
+    def __init__(self):
+        ################## Initializing Ros Node #################################################
+        rospy.init_node('node_turtle_revolve', anonymous=True)                        
 
-     def __init__ (self):
+        ################## Publishing node for turtle1/cmd_vel topic ############################
+        self.data_pub=rospy.Publisher('turtle1/cmd_vel', Twist, queue_size=10)
 
-          self.radius = 2.35             #radius of the circle
-          self.first =0                 #  to check condition to read position of turtle on starting 
-          self.Initial_value =0.0       # store initial position  
-          self.distance = 0                 #  track the distance 
-          rospy.init_node("node_turtle_revolve")
-
-          self.velocity_pub = rospy.Publisher('/turtle1/cmd_vel',Twist,queue_size=10)
-
-          self.pose_suscriber = rospy.Subscriber('/turtle1/pose',Pose,self.     pose_callback)
-
-          self.rate = rospy.Rate(10)
-          self.value = Twist()
-
-          self.value.linear.x = 4
-          self.value.linear.y = 0
-          self.value.linear.z = 0
-
-          self.value.angular.x = 0
-          self.value.angular.y = 0
-          self.value.angular.z = self.value.linear.x/self.radius
-          
+        #################  Subscribing node for turtle1/pose topic  ###############################
+        rospy.Subscriber("turtle1/pose", Pose, self.getPose)
 
 
+        self.iniTime = rospy.get_time()
+        self.rate    = rospy.Rate(10)
+        self.theta   = 0.00
+        self.iniTheta =0.00
+        self.firstCounter = 0
+
+        self.axisMovement = Twist()
+        self.axisMovement.linear.x = 1.5
+        self.axisMovement.linear.y = 0.0
+        self.axisMovement.linear.z = 0.0
+
+        self.axisMovement.angular.x = 0.0
+        self.axisMovement.angular.y = 0.0
+        self.axisMovement.angular.z = 1.0
+
+        
+    #################### Callback function for Subscribing topic #############################
+    def getPose(self,data):
+        self.theta = data.theta
+
+    ########################## Storing Initial values ######################################
+    def iniVal_theta(self):
+        if(self.firstCounter==0):
+            self.iniTheta = self.theta
+            self.firstCounter = self.firstCounter+1
+
+    #################### Publishing Stopping values #########################################
+    def stopValue(self):
+        self.stopValue = Twist()
+        self.stopValue.linear.x = 0.0
+        self.stopValue.linear.y = 0.0
+        self.stopValue.linear.z = 0.0
+
+        self.stopValue.angular.x = 0.0
+        self.stopValue.angular.y = 0.0
+        self.stopValue.angular.z = 0.0
+
+        self.data_pub.publish(self.stopValue)
+        rospy.loginfo('Goal Reached')
 
 
+    ####################### Publishing to topic #################################################
+    def rotation(self):
+        self.time = rospy.get_time()-self.iniTime
+        self.data_pub.publish(self.axisMovement)
+        rospy.loginfo('Moving in Circle:\n '+str(self.time))
 
-###   function to perform action when data comes in sucribed topic ### 
-     def pose_callback(self,poseMsg):
-          
-          self.distance = self.distance+0.054     
-          rospy.loginfo("moving in circle \n %s" , self.distance)
-          if(self.first==0):
-               self.first =1
-               self.Initial_value = poseMsg.theta
-          if(poseMsg.theta<self.Initial_value and poseMsg.theta > (self.Initial_value-0.096)):
-               self.value.linear.x=0
-               self.value.angular.z=0
-               #rospy.loginfo('Goal reached')
-          
+
 
 if __name__ == '__main__':
-     try: 
-          rotate_turtle = turtle()   
-          while not rospy.is_shutdown(): 
-               rotate_turtle.rate.sleep()       
-               rotate_turtle.velocity_pub.publish(rotate_turtle.value)
-               if(rotate_turtle.value.linear.x==0):
-                    rospy.signal_shutdown("Done")
-               
-          rospy.loginfo('Goal reached')
-          
+    try:
+       rotate_tur = Turtle()
+    
+       while not rospy.is_shutdown():
+        rotate_tur.rate.sleep()
+        rotate_tur.iniVal_theta()    
+        rotate_tur.rotation()
+        if(rotate_tur.theta<rotate_tur.iniTheta and rotate_tur.theta>(rotate_tur.iniTheta-0.10)):
+            rotate_tur.stopValue()
+            rospy.signal_shutdown("Goal Reached")
 
-     except rospy.ROSInitException:
-          
-          rospy.loginfo("node terminated")
-          
+    except rospy.ROSInterruptException:
+        pass
