@@ -38,11 +38,13 @@ def laser_callback(path):
 
 
 def Waypoints(t):
-    
+        global Destination
         x  =  t+0.6
         y  = round(2*math.sin(x)*math.sin(x/2),2)
+        print("here")
         if(x >= 6.4 ):
-            
+            print("here11")
+            Destination = 1
             return [12.5,0]
         return [x,y]
 
@@ -83,7 +85,7 @@ def control_loop():
     velocity_msg.angular.z = 0
     pub.publish(velocity_msg)
     goal = [0,0]
-    while True: # not rospy.is_shutdown():
+    while   not rospy.is_shutdown():
         
         #
         # Your algorithm to complete the obstacle course
@@ -93,28 +95,33 @@ def control_loop():
         distance_x = goal[0]-pose[0]
         distance_y = goal[1]-pose[1]
         distance = math.sqrt(math.pow(distance_x,2)+math.pow(distance_y,2))
-        print(distance)
+        #print(distance)
         if(distance<0.1):#distance_x <=0.1 and distance_y <=0.1):
+            print("reached", Destination)
             if (Destination ==1):
                 print("reached")
-                exit()
+                velocity_msg.linear.x = 0
+                velocity_msg.angular.z = 0
+                pub.publish(velocity_msg)
+                
+                rospy.signal_shutdown("goal reached")
             goal = Waypoints(pose[0])
 
         theta_goal = atan2((goal[1]-pose[1]),(goal[0]-pose[0]))
         ebot_theta = theta_goal - pose[2] 
-        print(pose,goal)
+        #print(pose,goal)
         #print(distance,goal_status)
 
         velocity_msg.linear.x = 0.8#P*distance
         if(ebot_theta > 0.1 ):
-            velocity_msg.angular.z = 2#P*ebot_theta
-            velocity_msg.linear.x = 0
+            velocity_msg.angular.z = 2.5#P*ebot_theta
+            velocity_msg.linear.x = 0.2
         elif(ebot_theta < -0.1):
-            velocity_msg.angular.z = -2#-P*ebot_theta
-            velocity_msg.linear.x = 0
+            velocity_msg.angular.z = -2.5#-P*ebot_theta
+            velocity_msg.linear.x = 0.2
         else:
             velocity_msg.angular.z = 0
-        print(ebot_theta,velocity_msg.angular.z)
+        #print(ebot_theta,velocity_msg.angular.z)
         pub.publish(velocity_msg)
         #print("Controller message pushed at {}".format(rospy.get_time()))
         rate.sleep()
