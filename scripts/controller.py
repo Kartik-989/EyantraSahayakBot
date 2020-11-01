@@ -8,12 +8,13 @@ from tf.transformations import euler_from_quaternion
 from math import atan2
 import math
 
-Destination = [12.5,0]
+Destination = 0
 obstacle =0
 distance = 0
 ebot_theta = 0
 pose = [0,0,0]
 P=0.5
+pub=0
 
 def odom_callback(data):
     global pose , goal, goal_status , ebot_theta  ,distance
@@ -28,13 +29,11 @@ def odom_callback(data):
 def laser_callback(path):
     global regions , obstacle
     regions = {
-        'right':  min(min(path.ranges[0:100]), 10),
-        'fright': min(min(path.ranges[101:349]), 10),
-        'front':  min(min(path.ranges[350:430]), 10),
-        'fleft':  min(min(path.ranges[431:619]), 10),
-        'left':   min(min(path.ranges[620:720]), 10),
+        'right':  min(min(path.ranges[70:299]), 5),    
+        'front':  min(min(path.ranges[300:480]), 5),
+        'left':   min(min(path.ranges[491:]), 5),
     }
-    if(regions['front']<2):
+    if(regions['front']<1):
         obstacle = 1
 
 
@@ -49,10 +48,28 @@ def Waypoints(t):
 
 
 def pass_obstacle():
-    pass
+    global regions , obstacle
+    msg= Twist()
+    while(obstacle ==1 ):
+        if(regions['front'] < 1.5 ):
+            msg.linear.x = 0.6
+            msg.angular.z = 5
+            print("obst")
+        elif(regions['front']>1 and regions['right']>0.5 and regions['right']<1 ):
+            msg.angular.z = 0
+            print("obst11")
+        #elif(regions['front'] <1):
+         #   msg.linear.x = 0
+        elif(regions['front'] >2 and regions['right']>2 and regions['left'] >2 ) :
+            obstacle =0
+        
+        pub.publish(msg)
+        
+
+    
 def control_loop():
 
-    global distance , ebot_theta ,pose
+    global distance , ebot_theta ,pose , pub, Destination
     rospy.init_node('ebot_controller')
 
     pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
@@ -66,7 +83,7 @@ def control_loop():
     velocity_msg.angular.z = 0
     pub.publish(velocity_msg)
     goal = [0,0]
-    while not rospy.is_shutdown():
+    while True: # not rospy.is_shutdown():
         
         #
         # Your algorithm to complete the obstacle course
@@ -77,20 +94,23 @@ def control_loop():
         distance_y = goal[1]-pose[1]
         distance = math.sqrt(math.pow(distance_x,2)+math.pow(distance_y,2))
         print(distance)
-        if(distance_x <=0.2 and distance_y <=0.2):
-                goal = Waypoints(pose[0])
+        if(distance<0.1):#distance_x <=0.1 and distance_y <=0.1):
+            if (Destination ==1):
+                print("reached")
+                exit()
+            goal = Waypoints(pose[0])
 
         theta_goal = atan2((goal[1]-pose[1]),(goal[0]-pose[0]))
         ebot_theta = theta_goal - pose[2] 
         print(pose,goal)
         #print(distance,goal_status)
 
-        velocity_msg.linear.x = 0.5#P*distance
+        velocity_msg.linear.x = 0.8#P*distance
         if(ebot_theta > 0.1 ):
-            velocity_msg.angular.z = 0.7#P*ebot_theta
+            velocity_msg.angular.z = 2#P*ebot_theta
             velocity_msg.linear.x = 0
         elif(ebot_theta < -0.1):
-            velocity_msg.angular.z = -0.5#-P*ebot_theta
+            velocity_msg.angular.z = -2#-P*ebot_theta
             velocity_msg.linear.x = 0
         else:
             velocity_msg.angular.z = 0
