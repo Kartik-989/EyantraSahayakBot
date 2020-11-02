@@ -1,133 +1,145 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 
 import rospy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
-from math import atan2
+
 import math
 
-Destination = 0
-obstacle =0
-distance = 0
-ebot_theta = 0
-pose = [0,0,0]
-P=0.5
-pub=0
+class Controller():
+	def __init__(self):
+		rospy.init_node('ebot_controller')
+		self.data_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
+		rospy.Subscriber('/ebot/laser/scan', LaserScan, self.laser_callback)
+		rospy.Subscriber('/odom', Odometry, self.odom_callback)
+		self.rate = rospy.Rate(20) 
+		self.pose=[0,0,0]
 
-def odom_callback(data):
-    global pose , goal, goal_status , ebot_theta  ,distance
-    x  = data.pose.pose.orientation.x
-    y  = data.pose.pose.orientation.y
-    z = data.pose.pose.orientation.z
-    w = data.pose.pose.orientation.w
-    pose = [round(data.pose.pose.position.x,2),round(data.pose.pose.position.y,2),round(euler_from_quaternion([x,y,z,w])[2],2)]
-    
+		self.velocity_msg = Twist()
+		self.velocity_msg.linear.x = 0
+		self.velocity_msg.angular.z = 0
+		self.data_pub.publish(self.velocity_msg)
+		self.front=0.0
+		self.right=0.0
+		self.x_targ = 12.5
+		self.y_targ = 0.0
+		self.regions={}
+		self.resolCount=0.5
 
-
-def laser_callback(path):
-    global regions , obstacle
-    regions = {
-        'right':  min(min(path.ranges[70:299]), 5),    
-        'front':  min(min(path.ranges[300:480]), 5),
-        'left':   min(min(path.ranges[491:]), 5),
-    }
-    if(regions['front']<1):
-        obstacle = 1
-
-
-def Waypoints(t):
-        global Destination
-        x  =  t+0.6
-        y  = round(2*math.sin(x)*math.sin(x/2),2)
-        print("here")
-        if(x >= 6.4 ):
-            print("here11")
-            Destination = 1
-            return [12.5,0]
-        return [x,y]
+########################### Waypoints calculation #############################
+	def Waypoints(self,count):
+		counter = 0
+		x=[]
+		y=[]
+		while counter<=6.4: 												 #loop will continue for 2*PIE, i.e. ~6.28
+			yArguments=2*(math.sin(counter))*(math.sin(counter/2))			#Value for Y is calculated using function 2(sin(x)*sin(x/2))
+			x.append(counter)
+			y.append(yArguments)
+			counter=counter+count
+		return [x,y]
+###################################################################
 
 
-def pass_obstacle():
-    global regions , obstacle
-    msg= Twist()
-    while(obstacle ==1 ):
-        if(regions['front'] < 1.5 ):
-            msg.linear.x = 0.6
-            msg.angular.z = 5
-            print("obst")
-        elif(regions['front']>1 and regions['right']>0.5 and regions['right']<1 ):
-            msg.angular.z = 0
-            print("obst11")
-        #elif(regions['front'] <1):
-         #   msg.linear.x = 0
-        elif(regions['front'] >2 and regions['right']>2 and regions['left'] >2 ) :
-            obstacle =0
-        
-        pub.publish(msg)
-        
+############ function for visiting waypoints for Sin-Wave ##########
+	def waypointsVisit(self,waypoints):
+		self.rate.sleep()
+		i=0
+		while i<(len(waypoints[0])-1):
+			while True:
+				x_dis=waypoints[0][i+1]-self.pose[0]
+				y_dis=waypoints[1][i+1]-self.pose[1]
+				theta_goal =  math.atan2(y_dis,x_dis)
+				e_theta = (theta_goal-self.pose[2])*16
+				distance = math.sqrt(math.pow(x_dis,2)+math.pow(y_dis,2))
+				self.velocity_msg.linear.x = 1	
+				self.velocity_msg.angular.z = e_theta
+				self.data_pub.publish(self.velocity_msg) 
+				if(distance<0.1):
+					
+					break
 
-    
-def control_loop():
+			i=i+1
+		
+		
+		
+####################################################################
 
-    global distance , ebot_theta ,pose , pub, Destination
-    rospy.init_node('ebot_controller')
+############### Receiving the Pose and heading values of Bot ########
+	def odom_callback(self,data):
+		x  = data.pose.pose.orientation.x
+		y  = data.pose.pose.orientation.y
+		z = data.pose.pose.orientation.z
+		w = data.pose.pose.orientation.w
+		self.pose = [data.pose.pose.position.x, data.pose.pose.position.y, euler_from_quaternion([x,y,z,w])[2]]
+###############################################################################
 
-    pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
-    rospy.Subscriber('/ebot/laser/scan', LaserScan, laser_callback)
-    rospy.Subscriber('/odom', Odometry, odom_callback)
 
-    rate = rospy.Rate(10) 
+###################### Getting LIDAR data in a Python-Dictionary ################## 
+	def laser_callback(self, msg):
+		self.regions = {
+		'front': min(min(msg.ranges[300:420]),100) 	,
+		'right': min(min(msg.ranges[50:299]),100) ,
+		'left' : min(min(msg.ranges[421:650]),100)
+		}
+################################################################################
 
-    velocity_msg = Twist()
-    velocity_msg.linear.x = 0
-    velocity_msg.angular.z = 0
-    pub.publish(velocity_msg)
-    goal = [0,0]
-    while   not rospy.is_shutdown():
-        
-        #
-        # Your algorithm to complete the obstacle course
-        #
-        if(obstacle == 1):
-            pass_obstacle()
-        distance_x = goal[0]-pose[0]
-        distance_y = goal[1]-pose[1]
-        distance = math.sqrt(math.pow(distance_x,2)+math.pow(distance_y,2))
-        #print(distance)
-        if(distance<0.1):#distance_x <=0.1 and distance_y <=0.1):
-            print("reached", Destination)
-            if (Destination ==1):
-                print("reached")
-                velocity_msg.linear.x = 0
-                velocity_msg.angular.z = 0
-                pub.publish(velocity_msg)
-                
-                rospy.signal_shutdown("goal reached")
-            goal = Waypoints(pose[0])
 
-        theta_goal = atan2((goal[1]-pose[1]),(goal[0]-pose[0]))
-        ebot_theta = theta_goal - pose[2] 
-        #print(pose,goal)
-        #print(distance,goal_status)
+#########################function for stopping values ##################
+	def stopping_Vels(self):
+		self.velocity_msg.linear.x=0.0
+		self.velocity_msg.angular.z=0.0
+		self.data_pub.publish(self.velocity_msg)
+		
+#######################################################################				
 
-        velocity_msg.linear.x = 0.8#P*distance
-        if(ebot_theta > 0.1 ):
-            velocity_msg.angular.z = 2.5#P*ebot_theta
-            velocity_msg.linear.x = 0.2
-        elif(ebot_theta < -0.1):
-            velocity_msg.angular.z = -2.5#-P*ebot_theta
-            velocity_msg.linear.x = 0.2
-        else:
-            velocity_msg.angular.z = 0
-        #print(ebot_theta,velocity_msg.angular.z)
-        pub.publish(velocity_msg)
-        #print("Controller message pushed at {}".format(rospy.get_time()))
-        rate.sleep()
+
+####################### function for Obstacle avoidance #######################
+	def control_vel(self):
+		self.rate.sleep()
+		waypoints = self.Waypoints(self.resolCount)
+		self.waypointsVisit(waypoints)
+		
+		while  True:
+			x_left=self.x_targ-self.pose[0]
+			y_left=self.y_targ-self.pose[1]
+			theta_goal =  math.atan2(y_left,x_left)
+			e_theta = (theta_goal-self.pose[2])*5
+			distance = math.sqrt(math.pow(x_left,2)+math.pow(y_left,2))
+			
+			self.velocity_msg.linear.x = 1.0
+			
+
+			if(self.regions['front']<=1.9 or self.regions['right']<=0.6):
+				
+				self.velocity_msg.linear.x=0.1
+				self.velocity_msg.angular.z = 3.0
+				self.data_pub.publish(self.velocity_msg) 
+			
+			if(self.regions['front']>1.9 and (self.regions['right']>0.6 and self.regions['right']<0.9)):
+				
+				self.velocity_msg.angular.z = 0.0
+				self.data_pub.publish(self.velocity_msg) 
+
+			if(self.regions['front']>=1.9 and self.regions['right']>=0.9): 
+			
+				self.velocity_msg.angular.z = min(e_theta,2.0)
+				self.data_pub.publish(self.velocity_msg) 
+			
+			if(distance<0.1):
+				self.stopping_Vels()
+				exit()
+				
+###############################################################################
+
+
+
+
 
 if __name__ == '__main__':
     try:
-        control_loop()
+    	control_loop = Controller()
+    	control_loop.control_vel()
     except rospy.ROSInterruptException:
         pass
